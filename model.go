@@ -111,11 +111,21 @@ func recordID(rec libdns.Record) (id int64, ok bool) {
 func toAPI(rec libdns.Record) (apiRecord, error) {
 	rr := rec.RR()
 
+	// TTL is deliberately not sent. Binary Lane enforces a fixed zone TTL and
+	// rejects any other value outright:
+	//
+	//	HTTP 400: The default TTL of 3600 may not be changed.
+	//
+	// Omitting the field lets the API apply its own default, so a caller
+	// asking for a shorter TTL gets a longer one rather than an error. That
+	// matters most for ACME: clients set a short TTL on challenge records, and
+	// forwarding it would fail every DNS-01 challenge. libdns sanctions this —
+	// "some providers may reject or silently increase TTLs ... it is
+	// recommended to not rely on the exact TTL value".
 	out := apiRecord{
 		Type: rr.Type,
 		Name: rr.Name,
 		Data: rr.Data,
-		TTL:  int(rr.TTL.Seconds()),
 	}
 
 	switch v := rec.(type) {

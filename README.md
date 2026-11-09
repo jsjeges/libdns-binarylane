@@ -49,6 +49,25 @@ are not writable.
 
 Binary Lane does not support `SVCB` or `HTTPS` records.
 
+## TTL is fixed at 3600
+
+Binary Lane enforces a single TTL for the whole zone and rejects any other
+value with `HTTP 400: The default TTL of 3600 may not be changed.`
+
+This package therefore **never sends a TTL**, letting the API apply its own.
+A record's `TTL` field is ignored on write, and reads always report 3600.
+
+This is deliberate rather than an oversight. ACME clients set a short TTL on
+`_acme-challenge` records, so forwarding the requested value would fail every
+DNS-01 challenge. libdns anticipates exactly this: "some providers may reject
+or silently increase TTLs that are below a certain threshold ... it is
+recommended to not rely on the exact TTL value."
+
+One consequence worth knowing: `DeleteRecords` matches on TTL when a non-zero
+one is given, so a record you constructed with a short TTL will not match the
+3600 the zone actually holds. Leave `TTL` zero to match regardless, or delete
+records obtained from `GetRecords`.
+
 ## Behaviour notes
 
 - **Record identity.** `GetRecords` stores the provider's record ID in each
@@ -70,9 +89,10 @@ Binary Lane does not support `SVCB` or `HTTPS` records.
 zero-valued RDATA fields, and error decoding — and the conversion layer is
 covered directly.
 
-The live test runs the full record lifecycle against a real zone. It is skipped
-unless both variables are set, and only touches records under a unique
-`libdns-test-<timestamp>` label, which it removes afterwards:
+The live test runs the full record lifecycle against a real zone -- ListZones,
+AppendRecords, SetRecords growing and shrinking an RRset, and DeleteRecords. It
+is skipped unless both variables are set, and only touches records under a
+unique `libdns-test-<timestamp>` label, which it removes afterwards:
 
 ```
 BINARYLANE_API_TOKEN=... BINARYLANE_TEST_ZONE=example.com go test -run TestLive -v

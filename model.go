@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/digitalocean/godo"
 	"github.com/libdns/libdns"
 )
 
@@ -16,9 +15,9 @@ import (
 
 // toLibdns converts an API record to its libdns representation, returning an
 // RR-type-specific struct where libdns recognises the type and an opaque
-// libdns.RR (with Error set) otherwise — for example SOA, which Binary Lane
-// exposes but libdns does not model.
-func toLibdns(rec godo.DomainRecord) libdns.Record {
+// libdns.RR otherwise — for example SOA, which Binary Lane exposes but libdns
+// does not model.
+func toLibdns(rec apiRecord) libdns.Record {
 	rr := libdns.RR{
 		Name: rec.Name,
 		Type: rec.Type,
@@ -36,8 +35,8 @@ func toLibdns(rec godo.DomainRecord) libdns.Record {
 	}
 
 	// A record this libdns version cannot parse into a typed struct is still
-	// worth returning: callers listing a zone should not lose every record
-	// because one is malformed or of an unmodelled type.
+	// worth returning: listing a zone should not lose every record because one
+	// is malformed or of an unmodelled type.
 	parsed, err := rr.Parse()
 	if err != nil {
 		parsed = rr
@@ -49,8 +48,8 @@ func toLibdns(rec godo.DomainRecord) libdns.Record {
 // withRecordID stores the API's record ID in the record's ProviderData field so
 // that SetRecords and DeleteRecords can address it without a lookup. The opaque
 // libdns.RR has no such field, so unmodelled types are returned unchanged and
-// are matched by value instead.
-func withRecordID(rec libdns.Record, id int) libdns.Record {
+// matched by value instead.
+func withRecordID(rec libdns.Record, id int64) libdns.Record {
 	switch v := rec.(type) {
 	case libdns.Address:
 		v.ProviderData = id
@@ -80,7 +79,7 @@ func withRecordID(rec libdns.Record, id int) libdns.Record {
 
 // recordID recovers an ID previously stored by withRecordID. ok is false for
 // records the caller constructed itself, which must be matched by value.
-func recordID(rec libdns.Record) (id int, ok bool) {
+func recordID(rec libdns.Record) (id int64, ok bool) {
 	var pd any
 
 	switch v := rec.(type) {
@@ -102,17 +101,17 @@ func recordID(rec libdns.Record) (id int, ok bool) {
 		return 0, false
 	}
 
-	id, ok = pd.(int)
+	id, ok = pd.(int64)
 
 	return id, ok && id != 0
 }
 
-// toAPI converts a libdns record into an API edit request, splitting the RDATA
-// back out into the fields Binary Lane expects.
-func toAPI(rec libdns.Record) (godo.DomainRecordEditRequest, error) {
+// toAPI converts a libdns record into the API's representation, splitting the
+// RDATA back out into the fields Binary Lane expects.
+func toAPI(rec libdns.Record) (apiRecord, error) {
 	rr := rec.RR()
 
-	req := godo.DomainRecordEditRequest{
+	out := apiRecord{
 		Type: rr.Type,
 		Name: rr.Name,
 		Data: rr.Data,
@@ -122,45 +121,58 @@ func toAPI(rec libdns.Record) (godo.DomainRecordEditRequest, error) {
 	switch v := rec.(type) {
 	case libdns.Address:
 		// netip normalises the textual form, which the raw Data may not be.
-		req.Data = v.IP.String()
+		out.Data = v.IP.String()
 	case libdns.MX:
-		req.Priority = int(v.Preference)
-		req.Data = v.Target
+		out.Priority = int(v.Preference)
+		out.Data = v.Target
 	case libdns.SRV:
-		req.Priority = int(v.Priority)
-		req.Weight = int(v.Weight)
-		req.Port = int(v.Port)
-		req.Data = v.Target
+		out.Priority = int(v.Priority)
+		out.Weight = int(v.Weight)
+		out.Port = int(v.Port)
+		out.Data = v.Target
 		// libdns splits the service and transport labels out of Name; the API
 		// wants the single assembled owner name back.
-		req.Name = strings.Trim(fmt.Sprintf("_%s._%s.%s", v.Service, v.Transport, v.Name), ".")
+		out.Name = strings.Trim(fmt.Sprintf("_%s._%s.%s", v.Service, v.Transport, v.Name), ".")
 	case libdns.CAA:
-		req.Flags = int(v.Flags)
-		req.Tag = v.Tag
-		req.Data = v.Value
+		out.Flags = int(v.Flags)
+		out.Tag = v.Tag
+		out.Data = v.Value
 	case libdns.TXT:
 		// libdns hands us unquoted text and expects the implementation to do
 		// whatever its API needs; Binary Lane stores the value verbatim.
-		req.Data = v.Text
+		out.Data = v.Text
+	case libdns.RR:
+		// An opaque RR of a type the API splits cannot be written safely: the
+		// dedicated fields would be left at zero and the whole RDATA sent as
+		// the hostname.
+		switch rr.Type {
+		case "MX", "SRV", "CAA":
+			parsed, err := rr.Parse()
+			if err != nil {
+				return apiRecord{}, fmt.Errorf("binarylane: parsing %s record %q: %w", rr.Type, rr.Name, err)
+			}
+
+			return toAPI(parsed)
+		}
 	}
 
-	if req.Name == "" {
-		req.Name = "@"
+	if out.Name == "" {
+		out.Name = "@"
 	}
 
-	return req, nil
+	return out, nil
 }
 
 // sameRRset reports whether an API record belongs to the RRset identified by
 // name and type.
-func sameRRset(rec godo.DomainRecord, name, rrtype string) bool {
+func sameRRset(rec apiRecord, name, rrtype string) bool {
 	return rec.Name == name && rec.Type == rrtype
 }
 
 // matches implements the partial-match rules of libdns.RecordDeleter: Name is
 // always significant, while an empty Type, zero TTL or empty Data act as
 // wildcards.
-func matches(existing godo.DomainRecord, want libdns.RR) bool {
+func matches(existing apiRecord, want libdns.RR) bool {
 	if existing.Name != want.Name {
 		return false
 	}

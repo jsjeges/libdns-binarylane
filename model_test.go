@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/digitalocean/godo"
 	"github.com/libdns/libdns"
 )
 
@@ -16,37 +15,37 @@ import (
 func TestToLibdns(t *testing.T) {
 	tests := []struct {
 		name     string
-		api      godo.DomainRecord
+		api      apiRecord
 		wantType string
 		wantData string
 	}{
 		{
 			name:     "A passes data through",
-			api:      godo.DomainRecord{ID: 1, Type: "A", Name: "www", Data: "203.0.113.10", TTL: 3600},
+			api:      apiRecord{ID: 1, Type: "A", Name: "www", Data: "203.0.113.10", TTL: 3600},
 			wantType: "A",
 			wantData: "203.0.113.10",
 		},
 		{
 			name:     "TXT passes data through unquoted",
-			api:      godo.DomainRecord{ID: 2, Type: "TXT", Name: "_acme-challenge", Data: "token-value", TTL: 120},
+			api:      apiRecord{ID: 2, Type: "TXT", Name: "_acme-challenge", Data: "token-value", TTL: 120},
 			wantType: "TXT",
 			wantData: "token-value",
 		},
 		{
 			name:     "MX folds priority into data",
-			api:      godo.DomainRecord{ID: 3, Type: "MX", Name: "@", Data: "mail.example.com.", Priority: 10, TTL: 3600},
+			api:      apiRecord{ID: 3, Type: "MX", Name: "@", Data: "mail.example.com.", Priority: 10, TTL: 3600},
 			wantType: "MX",
 			wantData: "10 mail.example.com.",
 		},
 		{
 			name:     "SRV folds priority, weight and port into data",
-			api:      godo.DomainRecord{ID: 4, Type: "SRV", Name: "_sip._tcp", Data: "sip.example.com.", Priority: 10, Weight: 20, Port: 5060, TTL: 3600},
+			api:      apiRecord{ID: 4, Type: "SRV", Name: "_sip._tcp", Data: "sip.example.com.", Priority: 10, Weight: 20, Port: 5060, TTL: 3600},
 			wantType: "SRV",
 			wantData: "10 20 5060 sip.example.com.",
 		},
 		{
 			name:     "CAA folds flags and tag into data",
-			api:      godo.DomainRecord{ID: 5, Type: "CAA", Name: "@", Data: "letsencrypt.org", Flags: 0, Tag: "issue", TTL: 3600},
+			api:      apiRecord{ID: 5, Type: "CAA", Name: "@", Data: "letsencrypt.org", Flags: 0, Tag: "issue", TTL: 3600},
 			wantType: "CAA",
 			wantData: `0 issue "letsencrypt.org"`,
 		},
@@ -81,7 +80,7 @@ func TestToLibdns(t *testing.T) {
 func TestToLibdnsUnmodelledTypeSurvives(t *testing.T) {
 	// Binary Lane serves SOA, which libdns does not model. It must come back as
 	// an opaque RR rather than being dropped or erroring.
-	got := toLibdns(godo.DomainRecord{
+	got := toLibdns(apiRecord{
 		ID: 9, Type: "SOA", Name: "@", Data: "ns1.binarylane.com.au. 1 3600 600 604800 1800", TTL: 1800,
 	})
 
@@ -97,22 +96,22 @@ func TestToAPI(t *testing.T) {
 	tests := []struct {
 		name string
 		rec  libdns.Record
-		want godo.DomainRecordEditRequest
+		want apiRecord
 	}{
 		{
 			name: "A normalises the address",
 			rec:  libdns.Address{Name: "www", TTL: time.Hour, IP: netip.MustParseAddr("203.0.113.10")},
-			want: godo.DomainRecordEditRequest{Type: "A", Name: "www", Data: "203.0.113.10", TTL: 3600},
+			want: apiRecord{Type: "A", Name: "www", Data: "203.0.113.10", TTL: 3600},
 		},
 		{
 			name: "TXT sends the text verbatim",
 			rec:  libdns.TXT{Name: "_acme-challenge", TTL: 2 * time.Minute, Text: "token-value"},
-			want: godo.DomainRecordEditRequest{Type: "TXT", Name: "_acme-challenge", Data: "token-value", TTL: 120},
+			want: apiRecord{Type: "TXT", Name: "_acme-challenge", Data: "token-value", TTL: 120},
 		},
 		{
 			name: "MX splits preference out of data",
 			rec:  libdns.MX{Name: "@", TTL: time.Hour, Preference: 10, Target: "mail.example.com."},
-			want: godo.DomainRecordEditRequest{Type: "MX", Name: "@", Data: "mail.example.com.", Priority: 10, TTL: 3600},
+			want: apiRecord{Type: "MX", Name: "@", Data: "mail.example.com.", Priority: 10, TTL: 3600},
 		},
 		{
 			name: "SRV reassembles the owner name and splits the numbers out",
@@ -120,7 +119,7 @@ func TestToAPI(t *testing.T) {
 				Service: "sip", Transport: "tcp", Name: "example", TTL: time.Hour,
 				Priority: 10, Weight: 20, Port: 5060, Target: "sip.example.com.",
 			},
-			want: godo.DomainRecordEditRequest{
+			want: apiRecord{
 				Type: "SRV", Name: "_sip._tcp.example", Data: "sip.example.com.",
 				Priority: 10, Weight: 20, Port: 5060, TTL: 3600,
 			},
@@ -128,12 +127,12 @@ func TestToAPI(t *testing.T) {
 		{
 			name: "CAA splits flags and tag out of data",
 			rec:  libdns.CAA{Name: "@", TTL: time.Hour, Flags: 128, Tag: "issue", Value: "letsencrypt.org"},
-			want: godo.DomainRecordEditRequest{Type: "CAA", Name: "@", Data: "letsencrypt.org", Flags: 128, Tag: "issue", TTL: 3600},
+			want: apiRecord{Type: "CAA", Name: "@", Data: "letsencrypt.org", Flags: 128, Tag: "issue", TTL: 3600},
 		},
 		{
 			name: "an empty name becomes the apex marker",
 			rec:  libdns.TXT{Name: "", TTL: time.Minute, Text: "v=spf1 -all"},
-			want: godo.DomainRecordEditRequest{Type: "TXT", Name: "@", Data: "v=spf1 -all", TTL: 60},
+			want: apiRecord{Type: "TXT", Name: "@", Data: "v=spf1 -all", TTL: 60},
 		},
 	}
 
@@ -153,7 +152,7 @@ func TestToAPI(t *testing.T) {
 func TestRoundTrip(t *testing.T) {
 	// A record read from the API and written straight back must be unchanged,
 	// or SetRecords would rewrite records it merely passed through.
-	for _, api := range []godo.DomainRecord{
+	for _, api := range []apiRecord{
 		{ID: 1, Type: "A", Name: "www", Data: "203.0.113.10", TTL: 3600},
 		{ID: 2, Type: "TXT", Name: "_acme-challenge", Data: "token", TTL: 120},
 		{ID: 3, Type: "MX", Name: "@", Data: "mail.example.com.", Priority: 10, TTL: 3600},
@@ -168,7 +167,7 @@ func TestRoundTrip(t *testing.T) {
 				t.Fatalf("toAPI(toLibdns(%s)) error = %v", api.Type, err)
 			}
 
-			want := godo.DomainRecordEditRequest{
+			want := apiRecord{
 				Type: api.Type, Name: api.Name, Data: api.Data, TTL: api.TTL,
 				Priority: api.Priority, Port: api.Port, Weight: api.Weight,
 				Flags: api.Flags, Tag: api.Tag,
@@ -181,7 +180,7 @@ func TestRoundTrip(t *testing.T) {
 }
 
 func TestMatches(t *testing.T) {
-	existing := godo.DomainRecord{ID: 1, Type: "TXT", Name: "_acme-challenge", Data: "token", TTL: 120}
+	existing := apiRecord{ID: 1, Type: "TXT", Name: "_acme-challenge", Data: "token", TTL: 120}
 
 	tests := []struct {
 		name string

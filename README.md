@@ -7,6 +7,8 @@ for [Binary Lane](https://www.binarylane.com.au), an Australian cloud provider
 whose DNS is managed through the Domains endpoints of its
 [public API](https://api.binarylane.com.au/reference/).
 
+It has no dependencies beyond `libdns` itself.
+
 ## Authenticating
 
 Create an API token in the Binary Lane control panel under **Account → API**,
@@ -22,18 +24,15 @@ provider := binarylane.Provider{
 records, err := provider.GetRecords(context.TODO(), "example.com.")
 ```
 
-## Why this uses DigitalOcean's client library
+## Configuration
 
-Binary Lane implements the same Domains API as DigitalOcean: the same paths, the
-same record schema, and the same `{domain_records, links, meta}` pagination
-envelope. Rather than duplicate an HTTP layer, this package drives
-[`digitalocean/godo`](https://github.com/digitalocean/godo) with its base URL
-pointed at Binary Lane.
+| Field | JSON | Purpose |
+| --- | --- | --- |
+| `APIToken` | `api_token` | API token. Required. |
+| `APIBase` | `api_base` | Overrides the API endpoint, including the version segment. A trailing slash is added if absent. Defaults to `DefaultAPIBase` (`https://api.binarylane.com.au/v2/`). |
+| `HTTPClient` | — | Supplies your own `*http.Client` for a custom transport, proxy or timeout. One with a 30s timeout is created on first use when nil. |
 
-`APIBase` overrides that URL if ever needed. Supply the API root only — the `v2`
-version segment is added to each request path by `godo`, so including it here
-would produce `/v2/v2/...`. A trailing slash is appended if absent, because
-request paths are resolved relative to this URL.
+No environment variables are read.
 
 ## Supported record types
 
@@ -41,12 +40,12 @@ request paths are resolved relative to this URL.
 
 Binary Lane keeps part of the RDATA of some types in dedicated API fields
 (`priority`, `port`, `weight`, `flags`, `tag`) while libdns expects `Data` to
-hold complete zone-file RDATA, so this package composes it on read and splits it
-again on write. `TestRoundTrip` pins that behaviour.
+hold complete zone-file RDATA, so this package composes it on read and splits
+it again on write. `TestRoundTrip` pins that behaviour for every affected type.
 
 Binary Lane also serves `SOA`, which libdns does not model. Those records are
-returned as an opaque `libdns.RR` rather than being dropped, and are not
-writable.
+returned as an opaque `libdns.RR` rather than being dropped from a listing, and
+are not writable.
 
 Binary Lane does not support `SVCB` or `HTTPS` records.
 
@@ -54,19 +53,33 @@ Binary Lane does not support `SVCB` or `HTTPS` records.
 
 - **Record identity.** `GetRecords` stores the provider's record ID in each
   record's `ProviderData` field. `DeleteRecords` uses it when present and falls
-  back to matching by value otherwise, per the `libdns.RecordDeleter` rules
-  (an empty `Type`, zero `TTL` or empty `Data` act as wildcards; `Name` is
-  always significant).
-- **Atomicity.** Binary Lane offers no batch endpoint, so `AppendRecords`,
+  back to matching by value otherwise, following the `libdns.RecordDeleter`
+  rules: an empty `Type`, zero `TTL` or empty `Data` act as wildcards, and
+  `Name` is always significant.
+- **Atomicity.** Binary Lane has no batch endpoint, so `AppendRecords`,
   `SetRecords` and `DeleteRecords` are **not** atomic: if a call fails partway,
   earlier changes remain applied.
 - **`SetRecords`** reuses existing records within an RRset where it can, so a
   record whose value is unchanged keeps its ID.
+- **Concurrency.** All exported methods are safe for concurrent use.
 
 ## Testing
 
-`go test ./...` covers the conversion layer offline and needs no credentials.
+`go test ./...` runs offline. The API layer is covered against an
+`httptest` server — authentication, pagination, request paths and methods,
+zero-valued RDATA fields, and error decoding — and the conversion layer is
+covered directly.
 
-The [`libdnstest`](https://github.com/libdns/libdns/tree/master/libdnstest)
-conformance suite requires a live API token and a zone it may modify freely;
-it is not wired into CI for that reason.
+The live test runs the full record lifecycle against a real zone. It is skipped
+unless both variables are set, and only touches records under a unique
+`libdns-test-<timestamp>` label, which it removes afterwards:
+
+```
+BINARYLANE_API_TOKEN=... BINARYLANE_TEST_ZONE=example.com go test -run TestLive -v
+```
+
+`go test -race ./...` covers concurrent use of every interface method.
+
+`libdns`'s own `libdnstest` conformance suite is not wired in yet: it is
+currently only on `libdns` master, and pinning an unreleased commit would put
+this package ahead of the released API it targets.

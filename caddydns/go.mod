@@ -36,7 +36,3 @@ require (
 	golang.org/x/time v0.16.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 )
-
-// Removed before this module is tagged; present only so the module builds
-// against the working tree before the parent is published.
-replace github.com/jsjeges/libdns-binarylane => ../

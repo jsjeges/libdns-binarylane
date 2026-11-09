@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/libdns/binarylane"
+	"github.com/jsjeges/libdns-binarylane"
 	"github.com/libdns/libdns"
 )
 

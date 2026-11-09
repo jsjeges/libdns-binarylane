@@ -1,4 +1,4 @@
-module github.com/libdns/binarylane
+module github.com/jsjeges/libdns-binarylane
 
 go 1.23
 

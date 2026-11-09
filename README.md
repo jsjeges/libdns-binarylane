@@ -1,6 +1,6 @@
 # Binary Lane for `libdns`
 
-[![godoc reference](https://img.shields.io/badge/godoc-reference-blue.svg)](https://pkg.go.dev/github.com/libdns/binarylane)
+[![godoc reference](https://img.shields.io/badge/godoc-reference-blue.svg)](https://pkg.go.dev/github.com/jsjeges/libdns-binarylane)
 
 This package implements the [libdns](https://github.com/libdns/libdns) interfaces
 for [Binary Lane](https://www.binarylane.com.au), an Australian cloud provider
@@ -8,6 +8,13 @@ whose DNS is managed through the Domains endpoints of its
 [public API](https://api.binarylane.com.au/reference/).
 
 It has no dependencies beyond `libdns` itself.
+
+> **On the import path.** The canonical home for a libdns provider is
+> `github.com/libdns/<provider>`, created by the libdns maintainers when a
+> submission is accepted — [libdns/libdns#237](https://github.com/libdns/libdns/pull/237)
+> is the submission, and [#236](https://github.com/libdns/libdns/issues/236) the
+> claim. Until that lands this lives here and is imported from here. Go resolves
+> module paths to repositories, so the path has to match wherever it is hosted.
 
 ## Authenticating
 
@@ -83,6 +90,7 @@ records obtained from `GetRecords`.
 - **Concurrency.** All exported methods are safe for concurrent use.
 
 ## Testing
+
 
 `go test ./...` runs offline. The API layer is covered against an
 `httptest` server — authentication, pagination, request paths and methods,

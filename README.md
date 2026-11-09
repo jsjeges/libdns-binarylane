@@ -89,6 +89,38 @@ records obtained from `GetRecords`.
   record whose value is unchanged keeps its ID.
 - **Concurrency.** All exported methods are safe for concurrent use.
 
+## Using it with Caddy
+
+Caddy does not consume a libdns provider directly: it needs a module registered
+under `dns.providers.<name>`, with a Caddyfile unmarshaler. That wrapper is the
+`caddydns` subdirectory, which is **its own Go module** so that importing the
+provider never drags in Caddy.
+
+    github.com/jsjeges/libdns-binarylane/caddydns
+
+Caddyfile:
+
+```caddyfile
+tls {
+	dns binarylane {env.BINARYLANE_API_TOKEN}
+}
+```
+
+`api_token` and `api_base` are also accepted as subdirectives. Placeholders are
+resolved at provision time, so the token can come from the environment and stay
+out of the Caddyfile.
+
+On NixOS the plugin is compiled in with `pkgs.caddy.withPlugins`, which
+**requires a version on every plugin path** — a bare path fails at evaluation
+with "Plugins must have tags present":
+
+```nix
+services.caddy.package = pkgs.caddy.withPlugins {
+  plugins = [ "github.com/jsjeges/libdns-binarylane/caddydns@v0.1.0" ];
+  hash = "sha256-...";          # build once with lib.fakeHash to learn it
+};
+```
+
 ## Testing
 
 

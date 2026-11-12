@@ -1,4 +1,17 @@
-# Binary Lane for `libdns`
+# Binary Lane for `libdns` — SUPERSEDED
+
+> **This package now lives in the libdns organisation.** Use
+> **[github.com/libdns/binarylane](https://github.com/libdns/binarylane)**, and
+> **[github.com/caddy-dns/binarylane](https://github.com/caddy-dns/binarylane)**
+> for the Caddy module.
+>
+> [libdns/libdns#237](https://github.com/libdns/libdns/pull/237) was accepted on
+> 2026-11-12 and the maintainers created both repositories. The code there is
+> this code, plus the review changes.
+>
+> This repository is archived and will not be updated. `v0.1.0` and
+> `caddydns/v0.1.0` remain fetchable, so anything already importing them keeps
+> building — but there is no reason to start.
 
 [![godoc reference](https://img.shields.io/badge/godoc-reference-blue.svg)](https://pkg.go.dev/github.com/jsjeges/libdns-binarylane)
 
@@ -8,13 +21,6 @@ whose DNS is managed through the Domains endpoints of its
 [public API](https://api.binarylane.com.au/reference/).
 
 It has no dependencies beyond `libdns` itself.
-
-> **On the import path.** The canonical home for a libdns provider is
-> `github.com/libdns/<provider>`, created by the libdns maintainers when a
-> submission is accepted — [libdns/libdns#237](https://github.com/libdns/libdns/pull/237)
-> is the submission, and [#236](https://github.com/libdns/libdns/issues/236) the
-> claim. Until that lands this lives here and is imported from here. Go resolves
-> module paths to repositories, so the path has to match wherever it is hosted.
 
 ## Authenticating
 
